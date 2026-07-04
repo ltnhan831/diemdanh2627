@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Điểm danh AI Live - Anti Spoofing</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background-color: #f1f5f9; text-align: center; margin: 0; padding: 10px; }
+    .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h2 { color: #1e3a8a; margin-bottom: 5px; }
+    input[type="text"] { width: 85%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 16px; text-align: center; margin-bottom: 15px; outline: none; }
+    button { width: 90%; padding: 14px; background-color: #2563eb; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+    button:disabled { background-color: #94a3b8; }
+    #msgBox { margin-top: 15px; font-size: 14px; font-weight: bold; padding: 10px; border-radius: 6px; display: none; }
+    #liveCameraContainer { display: none; margin-top: 15px; position: relative; width: 100%; border-radius: 8px; overflow: hidden; border: 3px solid #10b981; box-sizing: border-box; }
+    video { width: 100%; height: auto; display: block; transform: scaleX(-1); }
+    .scan-line { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background-color: rgba(16, 185, 129, 0.8); box-shadow: 0 0 10px #10b981; animation: scan 2s linear infinite; }
+    @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+    #anhGoc { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ĐIỂM DANH AI - BẢO MẬT KÉP</h2>
+    <p>Hệ thống năm học 2026-2027</p>
+    
+    <input type="text" id="ma_hs" placeholder="Nhập Mã số học sinh">
+    <button id="btnSubmit" onclick="batDauTienTrinh()">Xác minh Khuôn mặt</button>
+    
+    <div id="liveCameraContainer">
+      <video id="videoLive" autoplay muted playsinline></video>
+      <div class="scan-line"></div>
+    </div>
+    
+    <img id="anhGoc" crossorigin="anonymous">
+    <div id="msgBox"></div>
+  </div>
+
+  <script>
+    // =========================================================
+    // DÁN ĐƯỜNG LINK /EXEC TỪ GOOGLE APPS SCRIPT CỦA THẦY VÀO ĐÂY
+    // =========================================================
+    const API_URL = "https://script.google.com/macros/s/AKfycbxplalGTcqAhfmg0Diy3GBmzfMnBYHW9d9HDqVetJFK56_DAT-FYE7jcbK2_Yy0I0OI/exec"; 
+
+    const videoLive = document.getElementById('videoLive');
+    const anhGoc = document.getElementById('anhGoc');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const maHsInput = document.getElementById('ma_hs');
+    const cameraContainer = document.getElementById('liveCameraContainer');
+    
+    let aiLoaded = false;
+    let thongTinTam = {};
+    let luongVideo = null;
+    let vongLapQuetAI = null;
+
+    function hienThiThongBao(mauSac, noiDung) {
+      const box = document.getElementById("msgBox");
+      box.style.display = "block";
+      box.style.backgroundColor = mauSac === "xanh" ? "#dcfce7" : (mauSac === "do" ? "#ffe4e6" : (mauSac === "cam" ? "#ffedd5" : "#fbf8cc"));
+      box.style.color = mauSac === "xanh" ? "#166534" : (mauSac === "do" ? "#9f1239" : (mauSac === "cam" ? "#c2410c" : "#856404"));
+      box.innerText = noiDung;
+    }
+
+    // --- CÁC HÀM TOÁN HỌC ĐO CHỈ SỐ EAR (CHỐNG GIAN LẬN) ---
+    function tinhKhoangCachDiem(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function tinhEAR(eye) {
+      // eye[1], eye[5] và eye[2], eye[4] là các điểm đo chiều dọc mắt
+      const doc1 = tinhKhoangCachDiem(eye[1], eye[5]);
+      const doc2 = tinhKhoangCachDiem(eye[2], eye[4]);
+      // eye[0], eye[3] là điểm đo chiều ngang mắt
+      const ngang = tinhKhoangCachDiem(eye[0], eye[3]);
+      return (doc1 + doc2) / (2.0 * ngang);
+    }
+    // --------------------------------------------------------
+
+    async function goiApiGoogle(duLieu) {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(duLieu)
+      });
+      return await response.json();
+    }
+
+    async function batDauTienTrinh() {
+      const ma = maHsInput.value.trim();
+      if (ma === "") { alert("Vui lòng nhập Mã số!"); return; }
+      
+      btnSubmit.disabled = true;
+      hienThiThongBao("vang", "Đang tải dữ liệu từ máy chủ...");
+
+      try {
+        const res = await goiApiGoogle({ action: "kiem_tra", ma_hs: ma });
+        if (res.hople) {
+          anhGoc.src = res.link_anh;
+          thongTinTam = { ma: ma, ten: res.ho_ten };
+          taiMoHinhAI();
+        } else {
+          hienThiThongBao("do", res.noi_dung);
+          btnSubmit.disabled = false;
+        }
+      } catch (err) {
+        hienThiThongBao("do", "Lỗi kết nối mạng đến Google Server.");
+        btnSubmit.disabled = false;
+      }
+    }
+
+    async function taiMoHinhAI() {
+      if (!aiLoaded) {
+        hienThiThongBao("vang", "Đang nạp bộ não Trí tuệ Nhân tạo...");
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+        ]);
+        aiLoaded = true;
+      }
+      khoiDongCameraLive();
+    }
+
+    async function khoiDongCameraLive() {
+      btnSubmit.style.display = "none";
+      maHsInput.style.display = "none";
+      hienThiThongBao("vang", "Xin chào " + thongTinTam.ten + ". Hãy nhìn thẳng vào Camera để quét!");
+      
+      try {
+        luongVideo = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+        videoLive.srcObject = luongVideo;
+        cameraContainer.style.display = "block";
+        videoLive.onloadedmetadata = () => { tienHanhQuetLienTuc(); };
+      } catch (err) {
+        hienThiThongBao("do", "Lỗi: Không thể mở Camera. Vui lòng cấp quyền.");
+        khopKhongThanhCong();
+      }
+    }
+
+    async function tienHanhQuetLienTuc() {
+      try {
+        if (anhGoc.naturalWidth === 0) {
+          tatCamera();
+          hienThiThongBao("do", "Lỗi mạng: Không đọc được ảnh hồ sơ gốc. Vui lòng kiểm tra link ảnh.");
+          return;
+        }
+        
+        const nhanDienGoc = await faceapi.detectSingleFace(anhGoc).withFaceLandmarks().withFaceDescriptor();
+        if (!nhanDienGoc) { tatCamera(); hienThiThongBao("do", "Lỗi: Ảnh gốc không rõ mặt."); return; }
+
+        let soLanKhongThayMat = 0;
+        let trangThaiQuet = "DANG_SO_KHOP"; // 2 Trạng thái: DANG_SO_KHOP -> CHO_CHOP_MAT
+        let isProcessing = false; // Biến khóa bảo vệ chống quá tải RAM
+
+        vongLapQuetAI = setInterval(async () => {
+          if (isProcessing) return; 
+          isProcessing = true;
+
+          try {
+            const nhanDienLive = await faceapi.detectSingleFace(videoLive).withFaceLandmarks().withFaceDescriptor();
+            
+            if (nhanDienLive) {
+              soLanKhongThayMat = 0; 
+              
+              // BƯỚC 1: SO KHỚP KHUÔN MẶT
+              if (trangThaiQuet === "DANG_SO_KHOP") {
+                const khoangCach = faceapi.euclideanDistance(nhanDienGoc.descriptor, nhanDienLive.descriptor);
+                if (khoangCach < 0.55) {
+                  trangThaiQuet = "CHO_CHOP_MAT";
+                  hienThiThongBao("cam", "CHÍNH CHỦ! Vui lòng CHỚP MẮT (nhắm mắt 1 giây) để xác nhận chống gian lận.");
+                }
+              } 
+              // BƯỚC 2: PHÁT HIỆN THỰC THỂ SỐNG (CHỚP MẮT)
+              else if (trangThaiQuet === "CHO_CHOP_MAT") {
+                const matTrai = nhanDienLive.landmarks.getLeftEye();
+                const matPhai = nhanDienLive.landmarks.getRightEye();
+                
+                const earTrai = tinhEAR(matTrai);
+                const earPhai = tinhEAR(matPhai);
+                const earTrungBinh = (earTrai + earPhai) / 2.0;
+
+                // Nếu Tỷ lệ EAR tụt xuống dưới 0.25 -> Xác nhận đã nhắm/chớp mắt
+                if (earTrungBinh < 0.25) {
+                  clearInterval(vongLapQuetAI); 
+                  tatCamera(); 
+                  tienHanhLayGPS(); 
+                }
+              }
+            } else {
+              soLanKhongThayMat++;
+              if (soLanKhongThayMat > 25) { // Tăng giới hạn chờ lên để tránh bị ngắt quá sớm
+                clearInterval(vongLapQuetAI);
+                tatCamera();
+                hienThiThongBao("do", "Không tìm thấy khuôn mặt. Hết thời gian.");
+                khopKhongThanhCong();
+              }
+            }
+          } catch (err) {
+            console.error(err);
+          }
+          
+          isProcessing = false; // Mở khóa cho vòng lặp tiếp theo
+        }, 200); // Quét siêu tốc 200ms/lần để bắt kịp hành động chớp mắt
+        
+      } catch (e) {
+        tatCamera();
+        hienThiThongBao("do", "Lỗi AI: " + e.message);
+      }
+    }
+
+    function tatCamera() {
+      if (luongVideo) { luongVideo.getTracks().forEach(track => track.stop()); }
+      cameraContainer.style.display = "none";
+    }
+
+    function khopKhongThanhCong() {
+      btnSubmit.style.display = "block";
+      btnSubmit.innerText = "Thử quét lại";
+      btnSubmit.disabled = false;
+      maHsInput.style.display = "block";
+    }
+
+    function tienHanhLayGPS() {
+      hienThiThongBao("vang", "Nhận diện sinh trắc học thành công! Đang lấy tọa độ GPS...");
+      
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          async function(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            try {
+              const res = await goiApiGoogle({ action: "diem_danh", ma_hs: thongTinTam.ma, vi_do: lat, kinh_do: lon });
+              if (res.trang_thai === "Hop_le") {
+                hienThiThongBao("xanh", "CHÍNH THỨC HOÀN TẤT: Đã ghi nhận " + res.ho_ten + " (Sai số: " + res.khoang_cach + "m).");
+                setTimeout(() => { location.reload(); }, 4000); 
+              } else {
+                hienThiThongBao("do", "Đúng người nhưng sai vị trí! (Cách xa: " + res.khoang_cach + "m).");
+                khopKhongThanhCong();
+              }
+            } catch (err) {
+              hienThiThongBao("do", "Lỗi gửi dữ liệu lên máy chủ.");
+              khopKhongThanhCong();
+            }
+          },
+          function(error) {
+            hienThiThongBao("do", "Lỗi GPS. Hãy bật Định vị.");
+            khopKhongThanhCong();
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    }
+  </script>
+</body>
+</html>

@@ -20,7 +20,6 @@
     @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
     #anhGoc { display: none; }
 
-    /* --- CSS CHO MÀN HÌNH POP-UP CHÚC MỪNG --- */
     #successModal {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
@@ -53,7 +52,6 @@
     <div id="msgBox"></div>
   </div>
 
-  <!-- KHUNG POP-UP CHÚC MỪNG BỊ ẨN ĐI -->
   <div id="successModal">
     <div class="modal-content">
       <div class="checkmark">✓</div>
@@ -80,21 +78,30 @@
     let thongTinTam = {};
     let luongVideo = null;
     let vongLapQuetAI = null;
+    let amThanhCtx = null; // Biến lưu trữ bộ phát âm thanh
 
-    // Hàm tạo âm thanh tiếng Bíp ngắn gọn
-    function phatAmThanhBip() {
+    // Hàm mở khóa âm thanh (Bắt buộc chạy khi người dùng bấm nút)
+    function khoiTaoAmThanh() {
       try {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
+        if (!amThanhCtx) amThanhCtx = new AudioContext();
+        if (amThanhCtx.state === 'suspended') amThanhCtx.resume();
+      } catch(e) {}
+    }
+
+    // Hàm phát tiếng bíp
+    function phatAmThanhBip() {
+      try {
+        if (!amThanhCtx) return;
+        const osc = amThanhCtx.createOscillator();
+        const gain = amThanhCtx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(1000, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        osc.frequency.setValueAtTime(1000, amThanhCtx.currentTime); // Tần số âm thanh
+        gain.gain.setValueAtTime(0.1, amThanhCtx.currentTime); // Âm lượng
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(amThanhCtx.destination);
         osc.start();
-        osc.stop(ctx.currentTime + 0.15);
+        osc.stop(amThanhCtx.currentTime + 0.15); // Kêu trong 0.15 giây
       } catch(e) {}
     }
 
@@ -106,9 +113,7 @@
       box.innerText = noiDung;
     }
 
-    function tinhKhoangCachDiem(p1, p2) {
-      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-    }
+    function tinhKhoangCachDiem(p1, p2) { return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)); }
 
     function tinhEAR(eye) {
       const doc1 = tinhKhoangCachDiem(eye[1], eye[5]);
@@ -130,6 +135,8 @@
       const ma = maHsInput.value.trim();
       if (ma === "") { alert("Vui lòng nhập Mã số!"); return; }
       
+      khoiTaoAmThanh(); // MỞ KHÓA ÂM THANH NGAY KHI BẤM NÚT
+
       btnSubmit.disabled = true;
       hienThiThongBao("vang", "Đang kết nối Máy chủ...");
 
@@ -210,7 +217,6 @@
                 const matPhai = nhanDienLive.landmarks.getRightEye();
                 const earTrungBinh = (tinhEAR(matTrai) + tinhEAR(matPhai)) / 2.0;
 
-                // Ngưỡng EAR 0.28 để nhận diện nhạy hơn
                 if (earTrungBinh < 0.28) {
                   clearInterval(vongLapQuetAI); 
                   tatCamera(); 
@@ -225,11 +231,9 @@
             }
           } catch (err) {}
           isProcessing = false; 
-        }, 100); // Tốc độ quét nhanh 100ms
+        }, 100); 
         
-      } catch (e) {
-        tatCamera(); hienThiThongBao("do", "Lỗi AI: " + e.message);
-      }
+      } catch (e) { tatCamera(); hienThiThongBao("do", "Lỗi AI: " + e.message); }
     }
 
     function tatCamera() {
@@ -251,25 +255,18 @@
               const res = await goiApiGoogle({ action: "diem_danh", ma_hs: thongTinTam.ma, vi_do: position.coords.latitude, kinh_do: position.coords.longitude });
               if (res.trang_thai === "Hop_le") {
                 
-                // 1. Phát âm thanh tiếng Bíp
-                phatAmThanhBip();
+                phatAmThanhBip(); // GỌI HÀM PHÁT ÂM THANH
                 
-                // 2. Ẩn thông báo cũ và Camera
                 document.getElementById('msgBox').style.display = "none";
-                
-                // 3. Hiển thị Pop-up đẹp mắt
                 document.getElementById('modalImage').src = thongTinTam.anh;
                 document.getElementById('modalName').innerText = res.ho_ten;
                 
-                // Lấy giờ hiện tại hiển thị lên Pop-up
                 const now = new Date();
                 const gioPhut = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
                 const ngayThang = now.getDate().toString().padStart(2, '0') + "/" + (now.getMonth()+1).toString().padStart(2, '0');
                 document.getElementById('modalTime').innerText = "Vào lúc: " + gioPhut + " - " + ngayThang;
                 
                 document.getElementById('successModal').style.display = "flex";
-                
-                // Tự động tải lại trang sau 3.5 giây để sẵn sàng cho học sinh tiếp theo
                 setTimeout(() => { location.reload(); }, 3500); 
                 
               } else {

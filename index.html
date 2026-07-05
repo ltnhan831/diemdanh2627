@@ -182,7 +182,7 @@
                 const earTrungBinh = (earTrai + earPhai) / 2.0;
 
                 // Nếu Tỷ lệ EAR tụt xuống dưới 0.25 -> Xác nhận đã nhắm/chớp mắt
-                if (earTrungBinh < 0.25) {
+                if (earTrungBinh < 0.28) {
                   clearInterval(vongLapQuetAI); 
                   tatCamera(); 
                   tienHanhLayGPS(); 
@@ -202,7 +202,7 @@
           }
           
           isProcessing = false; // Mở khóa cho vòng lặp tiếp theo
-        }, 200); // Quét siêu tốc 200ms/lần để bắt kịp hành động chớp mắt
+        }, 100); // Quét siêu tốc 200ms/lần để bắt kịp hành động chớp mắt
         
       } catch (e) {
         tatCamera();
